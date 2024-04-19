@@ -1,48 +1,88 @@
 #!/usr/bin/env python3
 import asyncio
 from tcp import Servidor
+import base64, os
 import re
+
+usuarios = {}
+
+def getKey(dct,value):
+     return [key for key in dct if (dct[key] == value)]
 
 def validar_nome(nome):
     return re.match(br'^[a-zA-Z][a-zA-Z0-9_-]*$', nome) is not None
+
 
 def sair(conexao):
     print(conexao, 'conexão fechada')
     conexao.fechar()
 
-def dados_recebidos(conexao, dados):
-    waitingToReceive = 0
 
+def dados_recebidos(conexao, dados):
     if dados == b'':
         return sair(conexao)
-
-    dados = conexao.dados_residuais + dados
-    conexao.dados_residuais = b''
-
-    linhas = dados.split(b'\r\n')
-
-    if not dados.endswith(b'\n'):
-        conexao.dados_residuais = linhas[-1]
-        linhas = linhas[0:-1]
         
-    print(dados)
+    palavras = (conexao.dados_residuais + dados).split(b'\r\n')
 
-    if waitingToReceive == 0:
-        print("Teste")
-        arr = dados.split(b' ', 1)
-        comando = arr[0]
-        if len(arr) > 1:
-            argumentos = arr[1]
-        if comando == b'PING':
-            conexao.enviar(b"PONG server :" + argumentos)
+    if not dados.endswith(b'\r\n'):
+        conexao.dados_residuais = palavras[-1]
+        palavras = palavras[:-1]
+
+    for palavra in palavras:
+        if palavra == b'':
+            continue
+
+        termo = palavra.split()
+
+        print(termo[1] == termo[1].upper())
+
+        if termo[0] == b'PING':
+            conexao.s.sendall(b':server PONG server :%s\r\n' % termo[1])
+
+        if termo[0] == b'NICK':
+            usuario = usuarios.get(termo[1].upper())
+
+            if usuario:
+                if usuario == conexao:
+                    if validar_nome(termo[1]):
+                        conexao.s.sendall(b':server 001 %s :Welcome\r\n' % termo[1])
+                        conexao.s.sendall(b':server 422 %s :MOTD File is missing\r\n' % termo[1])
+                else:
+                    if termo[1] == termo[1].upper():
+                        conexao.s.sendall(b':server 433 %s %s :Nickname is already in use\r\n' % (termo[1], termo[1].upper()))
+                    else:
+                        conexao.s.sendall(b':server 433 * %s :Nickname is already in use\r\n' % termo[1])
+            else:
+                if termo[1].upper() in usuarios.keys():
+                    conexao.s.sendall(b':server 433 * %s :Nickname is already in use\r\n' % termo[1])
+                else:
+                    if validar_nome(termo[1]):
+                        if termo[1] in usuarios.keys():
+                            
+                            conexao.s.sendall(b':server 433 * %s :Nickname is already in use\r\n' % termo[1])
+                        else:
+                            pass
+
+                        usuarios[termo[1].upper()] = conexao
+
+                        print(usuarios)
+                                
+                        conexao.s.sendall(b':server 001 %s :Welcome\r\n' % termo[1])
+                        conexao.s.sendall(b':server 422 %s :MOTD File is missing\r\n' % termo[1])
+                    else:
+                        conexao.s.sendall(b':server 432 * %s :Erroneous nickname\r\n' % termo[1])
+
+    # print(conexao, dados)
+
 
 def conexao_aceita(conexao):
     print(conexao, 'nova conexão')
+
     conexao.dados_residuais = b''
     conexao.registrar_recebedor(dados_recebidos)
-    
 
 
 servidor = Servidor(6667)
 servidor.registrar_monitor_de_conexoes_aceitas(conexao_aceita)
+
 asyncio.get_event_loop().run_forever()
