@@ -1,12 +1,13 @@
 #!/usr/bin/env python3
 import asyncio
-from tcp import Servidor
+from tcp import Servidor, Conexao
 import base64, os
 import re
-from typing import List
+from typing import List, Dict
 
 nicknamesPerConnection = dict()
-canais = dict()
+canais: Dict[str, List[Conexao]] = dict()    # Cada nome de canal está associado a uma lista de conexões
+nickname_dict: Dict[Conexao, str] = dict()   # Cada conexão está associada a um nick apenas
 
 def getKey(dct,value):
     for key in dct:
@@ -45,7 +46,7 @@ def dados_recebidos(conexao, dados):
         conexao.dados_residuais = palavras[-1]
         palavras = palavras[:-1]
 
-    for palavra in palavras:
+    for palavra in palavras:.lower()
         if palavra == b'':
             continue
 
@@ -62,59 +63,88 @@ def dados_recebidos(conexao, dados):
         if termo[0] == b'NICK':         
             flagNicknameAlredyExists = 0
 
+            # Validando o nick
             if validar_nome(termo[1]) == False:
                 conexao.s.sendall(b':server 432 * %s :Erroneous nickname\r\n' % termo[1])
             else:
-                for key in nicknamesPerConnection.values():
-                    temp = key
-                    for i in temp:
-                        if termo[1].lower() == i:
-                            flagNicknameAlredyExists = 1
-                            break
-                
-                if flagNicknameAlredyExists == 0:
-                    conexao.set_nick(termo[1].decode('ascii'))          # setta o nick atual
-                    conexao.nicknameList.append(termo[1].lower())
-                    nicknamesPerConnection[conexao] = conexao.nicknameList
-                    conexao.s.sendall(b':server 001 %s :Welcome\r\n' % termo[1].lower())
-                    conexao.s.sendall(b':server 422 %s :MOTD File is missing\r\n' % termo[1].lower())
+                # Verificando se o nick existe
+                for nick in nickname_dict.values():
+                    if termo[1].lower() == nick.lower():
+                        flagNicknameAlredyExists = 1
+                        break
+                # Se não, adiciona o nick a conexão (primeira vez setando o nick) ou troca o nick caso a conexão já estiver o dicionário
+                if (flagNicknameAlredyExists == 0):
+                    flag_conexao_existente = 0
+                    if conexao in nickname_dict:
+                        nick_antigo = conexao.get_nick()
+                        flag_conexao_existente = 1
+                    conexao.set_nick(termo[1].decode('ascii'))              # setta o nick atual
+                    nickname_dict[conexao] = termo[1]
+
+                    if flag_conexao_existente:
+                        conexao.s.sendall(b':%s NICK %s\r\n' % (nick_antigo.encode(), termo[1].lower()))
+                    else:
+                        conexao.s.sendall(b':server 001 %s :Welcome\r\n' % termo[1].lower())
+                        conexao.s.sendall(b':server 422 %s :MOTD File is missing\r\n' % termo[1].lower())
+                    print(list(nickname_dict.values()))
+                # Caso contrário
                 else:
-                    conexao.s.sendall(b':server 433 * %s :Nickname is already in use\r\n' % termo[1].lower())                        
+                    if conexao not in nickname_dict:
+                        conexao.s.sendall(b':server 433 * %s :Nickname is already in use\r\n' % termo[1])       
+                    else:
+                        conexao.s.sendall(b':server 433 %s %s :Nickname is already in use\r\n' % (conexao.get_nick().encode(), termo[1]))   
+
+        """ PASSO 5 """                 
+        if termo[0] == b'PRIVMSG':
+            destinatario = termo[1].lower()
+            mensagem = termo[2][1:]
+
+            # Mensagem individual
+            if destinatario[0] != 35:
+                conexao_certa: Conexao = None
+                for con in nickname_dict:
+                    if nickname_dict[con] == destinatario:
+                        conexao_certa = con
+                
+                if conexao_certa:
+                    conexao_certa.enviar(b':%s PRIVMSG %s :%s\r\n' % (conexao.get_nick().encode(), destinatario, mensagem))
+            
+            # Mensagem para canal
+            else:
+                canal = destinatario[1:]
+                for con in canais[canal]:
+                    conexao_certa.enviar(b':%s PRIVMSG %s :%s\r\n' % (conexao.get_nick().encode(), con.get_nick(), mensagem))
 
         """ PASSO 6 """
         if termo[0] == b'JOIN':
             """ Verifica se o primeiro caracter do nome do canal é "#" e se o restante do nome é valido
             """
-            print("AAAAA")
-            canal = termo[1].lower()
+            canal = termo[1].lower().decode("ascii")
             nome_canal = termo[1][1:]
 
-            if (canal[0] != 35) or not (validar_nome(nome_canal)):
+            if (canal[0] != '#') or not (validar_nome(nome_canal)):
                 conexao.s.sendall(b':server 403 %s :No such channel\r\n' % nome_canal)
             else:
                 if canal not in canais:
-                    canais[canal] = [conexao.get_nick()]
+                    canais[canal] = [conexao]
                 else:
-                    canais[canal].append(conexao.get_nick())
-                    canais[canal].sort()
+                    canais[canal].append(conexao)
 
-                print(canais[canal])
-                # TODO: implementar envio de mensagem para outros usuários
-                conexao.s.sendall(b':%s JOIN :%s\r\n' % (conexao.get_nick().encode(), nome_canal))
+                for con in canais[canal]:
+                    con.enviar(b':%s JOIN :%s\r\n' % (conexao.get_nick().encode(), nome_canal))
 
                 string_builder = ""
                 for i in range(len(canais[canal])):
                     if i == 0:
-                        string_builder = b'%s ' % canais[canal][i].encode()
+                        string_builder = b'%s ' % canais[canal][i].get_nick().encode()
                     elif i == len(canais[canal][i]) - 1:
-                        string_builder += b'%s' % canais[canal][i].encode()
+                        string_builder += b'%s' % canais[canal][i].get_nick().encode()
                     else:
-                        string_builder += b'%s ' % canais[canal][i].encode()
-                print("BBBB")
+                        string_builder += b'%s ' % canais[canal][i].get_nick().encode()
+
                 full_message = b':server 353 %s = %s :%s\r\n' % (conexao.get_nick().encode(), canal, string_builder)
 
                 if len(full_message) > 512:
-                    print('CCCCCC')
                     while len(full_message) > 510:
                         temp = string_builder
                         temp.split(" ")
