@@ -119,50 +119,54 @@ def dados_recebidos(conexao, dados):
         if termo[0] == b'JOIN':
             """ Verifica se o primeiro caracter do nome do canal é "#" e se o restante do nome é valido
             """
-            canal = termo[1].lower().decode("ascii")
+            canal_input = termo[1].decode("ascii")
             nome_canal = termo[1][1:]
 
-            if (canal[0] != '#') or not (validar_nome(nome_canal)):
+            if (canal_input[0] != '#') or not (validar_nome(nome_canal)):
                 conexao.s.sendall(b':server 403 %s :No such channel\r\n' % nome_canal)
             else:
-                if canal not in canais:
-                    canais[canal] = [conexao]
+                if canal_input.upper() not in canais:
+                    canais[canal_input.upper()] = [conexao]
                 else:
-                    canais[canal].append(conexao)
+                    canais[canal_input.upper()].append(conexao)
 
-                for con in canais[canal]:
-                    con.enviar(b':%s JOIN :%s\r\n' % (conexao.get_nick().encode(), nome_canal))
+                for con in canais[canal_input.upper()]:
+                    con.enviar(b':%s JOIN :%s\r\n' % (conexao.get_nick().encode(), b'#' + nome_canal))
 
-                string_builder = ""
-                for i in range(len(canais[canal])):
-                    if i == 0:
-                        string_builder = b'%s ' % canais[canal][i].get_nick().encode()
-                    elif i == len(canais[canal][i]) - 1:
-                        string_builder += b'%s' % canais[canal][i].get_nick().encode()
-                    else:
-                        string_builder += b'%s ' % canais[canal][i].get_nick().encode()
+                """ PASSO 9"""
+                # TODO: ajustar envio de mensagem quando usuário entra em canal
+                # string_builder = ""
+                # for i in range(len(canais[canal])):
+                #     if i == 0:
+                #         string_builder = b'%s ' % canais[canal][i].get_nick().encode()
+                #     elif i == len(canais[canal][i]) - 1:
+                #         string_builder += b'%s' % canais[canal][i].get_nick().encode()
+                #     else:
+                #         string_builder += b'%s ' % canais[canal][i].get_nick().encode()
 
-                full_message = b':server 353 %s = %s :%s\r\n' % (conexao.get_nick().encode(), canal, string_builder)
+                # full_message = b':server 353 %s = %s :%s\r\n' % (conexao.get_nick().encode(), canal, string_builder)
 
-                if len(full_message) > 512:
-                    while len(full_message) > 510:
-                        temp = string_builder
-                        temp.split(" ")
-                        full_message =  b':server 353 %s = %s :%s %s %s\r\n' % conexao.get_nick().encode(), canal, temp[0], temp[1], temp[2]
-                        conexao.s.sendall(b'%s\r\n' % full_message)
-                        string_builder = members_builder(temp[2:])
-                        full_message = b':server 353 %s = %s :%s\r\n' % conexao.get_nick().encode(), canal, string_builder
-                conexao.s.sendall(b'%s' % full_message)
+                # if len(full_message) > 512:
+                #     while len(full_message) > 510:
+                #         temp = string_builder
+                #         temp.split(" ")
+                #         full_message =  b':server 353 %s = %s :%s %s %s\r\n' % conexao.get_nick().encode(), canal, temp[0], temp[1], temp[2]
+                #         conexao.s.sendall(b'%s\r\n' % full_message)
+                #         string_builder = members_builder(temp[2:])
+                #         full_message = b':server 353 %s = %s :%s\r\n' % conexao.get_nick().encode(), canal, string_builder
+                # conexao.s.sendall(b'%s' % full_message)
         
         """ PASSO 7"""
         if termo[0] == b'PART':
-            canal_input = termo[1][1:]
-            canal = termo[1][1:].decode("ascii").upper()
+            canal_input = termo[1]
+            canal = termo[1].decode("ascii").upper()
             current_nick = conexao.get_nick()
 
             # Verifica se o canal especificado está no dicionário de canais
+            print(list(canais.keys()))
+            print(canal)
             if canal in canais:
-                index = 0
+                i = 0
                 for con in canais[canal]:
                     con.enviar(b':%s PART %s\r\n' % (current_nick.encode(), canal_input))
                     if con.get_nick() == current_nick:
