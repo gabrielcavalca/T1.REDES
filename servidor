@@ -20,6 +20,18 @@ def validar_nome(nome):
     return re.match(br'^[a-zA-Z][a-zA-Z0-9_-]*$', nome) is not None
 
 def sair(conexao):
+    """ PASSO 8 """
+
+    current_nick = conexao.get_nick()
+    for canal in canais:
+        if conexao in canais[canal]:
+            i = 0
+            for con in canais[canal]:
+                con.enviar(b':%s QUIT :Connection closed\r\n' % (current_nick.encode()))
+                if con == conexao:
+                    index_to_pop = i
+            canais[canal].pop(index_to_pop)
+
     print(conexao, 'conexão fechada')
     conexao.fechar()
 
