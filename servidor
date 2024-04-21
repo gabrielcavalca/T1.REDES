@@ -153,6 +153,26 @@ def dados_recebidos(conexao, dados):
                         string_builder = members_builder(temp[2:])
                         full_message = b':server 353 %s = %s :%s\r\n' % conexao.get_nick().encode(), canal, string_builder
                 conexao.s.sendall(b'%s' % full_message)
+        
+        """ PASSO 7"""
+        if termo[0] == b'PART':
+            canal_input = termo[1][1:]
+            canal = termo[1][1:].decode("ascii").upper()
+            current_nick = conexao.get_nick()
+
+            # Verifica se o canal especificado está no dicionário de canais
+            if canal in canais:
+                index = 0
+                for con in canais[canal]:
+                    con.enviar(b':%s PART %s\r\n' % (current_nick.encode(), canal_input))
+                    if con.get_nick() == current_nick:
+                        desconectar_index = i
+                    i += 1
+
+                # Tira a conexão do dicionario de canais
+                canais[canal].pop(desconectar_index)
+                    
+
         '''
         if usuario:
             if usuario == conexao:
