@@ -24,15 +24,19 @@ def sair(conexao):
 
     current_nick = conexao.get_nick()
 
+    nickname_dict.pop(conexao, None)
+    print(nickname_dict)
+
     for canal in canais:
         if conexao in canais[canal]:
             i = 0
-            for con in canais[canal]:                
+            for con in canais[canal]:            
                 if con == conexao:
-                    canais[canal].pop(i)
+                    save_i = i
                 else:
-                    con.enviar(b':%s QUIT' % (current_nick.encode()))
+                    con.enviar(b':%s QUIT\r\n' % (current_nick.encode()))
                 i = i + 1
+            canais[canal].pop(save_i)
 
     conexao.fechar()
 
