@@ -16,12 +16,6 @@ class Conexao:
     def __init__(self, accept_tuple):
         self.s, _ = accept_tuple
         self.current_nick: str = ""
-
-    def set_nick(self, nick: str):
-        self.current_nick = nick
-    
-    def get_nick(self):
-        return self.current_nick
     
     def registrar_recebedor(self, callback):
         asyncio.get_event_loop().add_reader(self.s, lambda: callback(self, self.s.recv(8192)))

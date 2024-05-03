@@ -22,7 +22,7 @@ def validar_nome(nome):
 def sair(conexao):
     """ PASSO 8 """
 
-    current_nick = conexao.get_nick()
+    current_nick = conexao.nick
 
     nickname_dict.pop(conexao, None)
     print(nickname_dict)
@@ -93,9 +93,9 @@ def dados_recebidos(conexao, dados):
                 if (flagNicknameAlredyExists == 0):
                     flag_conexao_existente = 0
                     if conexao in nickname_dict:
-                        nick_antigo = conexao.get_nick()
+                        nick_antigo = conexao.nick
                         flag_conexao_existente = 1
-                    conexao.set_nick(termo[1].decode('ascii'))              # setta o nick atual
+                    conexao.nick = termo[1].decode('ascii')          # setta o nick atual
                     nickname_dict[conexao] = termo[1]
 
                     if flag_conexao_existente:
@@ -108,7 +108,7 @@ def dados_recebidos(conexao, dados):
                     if conexao not in nickname_dict:
                         conexao.s.sendall(b':server 433 * %s :Nickname is already in use\r\n' % termo[1])       
                     else:
-                        conexao.s.sendall(b':server 433 %s %s :Nickname is already in use\r\n' % (conexao.get_nick().encode(), termo[1]))   
+                        conexao.s.sendall(b':server 433 %s %s :Nickname is already in use\r\n' % (conexao.nick.encode(), termo[1]))   
 
         """ PASSO 5 """                 
         if termo[0] == b'PRIVMSG':
@@ -123,7 +123,7 @@ def dados_recebidos(conexao, dados):
                         conexao_certa = con
                 
                 if conexao_certa:
-                    conexao_certa.enviar(b':%s PRIVMSG %s :%s\r\n' % (conexao.get_nick().encode(), destinatario, mensagem))            
+                    conexao_certa.enviar(b':%s PRIVMSG %s :%s\r\n' % (conexao.nick.encode(), destinatario, mensagem))            
             # Mensagem para canal
             else:
                 canal = destinatario[1:].lower()
@@ -131,7 +131,7 @@ def dados_recebidos(conexao, dados):
 
                 for con in conexao_certa:
                     if con != conexao:
-                        con.s.sendall(b':%s PRIVMSG %s :%s\r\n' % (conexao.get_nick().encode(), b'#' + canal.lower(), mensagem))
+                        con.s.sendall(b':%s PRIVMSG %s :%s\r\n' % (conexao.nick.encode(), b'#' + canal.lower(), mensagem))
 
         """ PASSO 6 """
         if termo[0] == b'JOIN':
@@ -149,36 +149,39 @@ def dados_recebidos(conexao, dados):
                     canais[canal_input.upper()].append(conexao)
 
                 for con in canais[canal_input.upper()]:
-                    con.enviar(b':%s JOIN :%s\r\n' % (conexao.get_nick().encode(), b'#' + nome_canal))
+                    con.enviar(b':%s JOIN :%s\r\n' % (conexao.nick.encode(), b'#' + nome_canal))
 
                 """ PASSO 9"""
-                # TODO: ajustar envio de mensagem quando usuário entra em canal
-                # string_builder = ""
-                # for i in range(len(canais[canal])):
-                #     if i == 0:
-                #         string_builder = b'%s ' % canais[canal][i].get_nick().encode()
-                #     elif i == len(canais[canal][i]) - 1:
-                #         string_builder += b'%s' % canais[canal][i].get_nick().encode()
-                #     else:
-                #         string_builder += b'%s ' % canais[canal][i].get_nick().encode()
+                #   TODO: ajustar envio de mensagem quando usuário entra em canal
+                string_builder = ""
+                # canais[canal_input.upper()] = sorted(canais[canal_input.upper()])
+                nomes = []
+                for i in range(len(canais[canal_input.upper()])):
+                    nomes.append(canais[canal_input.upper()][i].nick.encode())
 
-                # full_message = b':server 353 %s = %s :%s\r\n' % (conexao.get_nick().encode(), canal, string_builder)
+                nomes = sorted(nomes)
 
-                # if len(full_message) > 512:
-                #     while len(full_message) > 510:
-                #         temp = string_builder
-                #         temp.split(" ")
-                #         full_message =  b':server 353 %s = %s :%s %s %s\r\n' % conexao.get_nick().encode(), canal, temp[0], temp[1], temp[2]
-                #         conexao.s.sendall(b'%s\r\n' % full_message)
-                #         string_builder = members_builder(temp[2:])
-                #         full_message = b':server 353 %s = %s :%s\r\n' % conexao.get_nick().encode(), canal, string_builder
-                # conexao.s.sendall(b'%s' % full_message)
+                for i in range(len(nomes)):
+                    if i == 0:
+                        string_builder = b'%s ' % nomes[i]
+                    elif i == len(canais[canal_input.upper()]) - 1:
+                        string_builder += b'%s' % nomes[i]
+                    else:
+                        string_builder += b'%s ' % nomes[i]
+
+                full_message = b':server 353 %s = %s :%s\r\n' % (conexao.nick.encode(), b'#'+nome_canal, string_builder)
+                print(full_message)
+                
+
+                # 
+                conexao.s.sendall(b'%s' % full_message)
+                conexao.s.sendall(b':server 366 %s %s :End of /NAMES list.\r\n' % (conexao.nick.encode(), b'#'+nome_canal))
         
         """ PASSO 7"""
         if termo[0] == b'PART':
             canal_input = termo[1]
             canal = termo[1].decode("ascii").upper()
-            current_nick = conexao.get_nick()
+            current_nick = conexao.nick
 
             # Verifica se o canal especificado está no dicionário de canais
 
@@ -186,7 +189,7 @@ def dados_recebidos(conexao, dados):
                 i = 0
                 for con in canais[canal]:
                     con.enviar(b':%s PART %s\r\n' % (current_nick.encode(), canal_input))
-                    if con.get_nick() == current_nick:
+                    if con.nick == current_nick:
                         desconectar_index = i
                     i += 1
 
@@ -244,6 +247,7 @@ def members_builder(members: List) -> str:
 
 def conexao_aceita(conexao):
     conexao.dados_residuais = b''
+    conexao.nick = b''
     conexao.nicknameList = list()
     conexao.registrar_recebedor(dados_recebidos)
 
